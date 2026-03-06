@@ -1,118 +1,118 @@
-#include"isa.h"
-#include"encode.h"
-#include<stdio.h>
+#include"parser.h"
+#include<stdlib.h>
 #include<string.h>
-#include<stdint.h>
-int getRegisterCode(const char *reg){
-    extern const RegisterMap registerTable[];
-    extern const int REGISTER_COUNT;
-    for (int i =0;i<REGISTER_COUNT;i++){
-        if (strcmp(registerTable[i].name,reg)==0){
-            return registerTable[i].code;
+#include<stdio.h>
+int tokenizeLine(const char *line,char tokens[MAX_TOKENS][MAX_LINE]){
+    int count=0;
+    char temp[MAX_LINE];
+    strncpy(temp,line,MAX_LINE-1);
+    temp[MAX_LINE-1]='\0';
+    char *tok=strtok(temp," ,\t\n");
+    while(tok != NULL&&count<MAX_TOKENS){
+        strncpy(tokens[count],tok,MAX_LINE-1);
+        tokens[count][MAX_LINE-1]='\0';
+        count++;
+        tok=strtok(NULL," ,\t\n");
+    }
+    return count;
+}
+ParsedInstr parseInstruction(const char *line,int lineNumber){
+    ParsedInstr instr;
+    memset(&instr,0,sizeof(instr));
+    instr.lineNumber=lineNumber;
+    char tokens[MAX_TOKENS][MAX_LINE];
+    int count=tokenizeLine(line,tokens);
+    if(count==0)
+        return instr;
+    strncpy(instr.opcode,tokens[0],sizeof(instr.opcode)-1);
+    if(strcmp(instr.opcode,"add")==0&&count==4){
+        strncpy(instr.rd,tokens[1],sizeof(instr.rd)-1);
+        strncpy(instr.rs1,tokens[2],sizeof(instr.rs1)-1);
+        strncpy(instr.rs2,tokens[3],sizeof(instr.rs2)-1);
+        instr.type=0;
+        instr.funct3=0b000;
+        instr.funct7=0b0000000;
+        instr.opcodeVal=0b0110011;
+    }
+    else if(strcmp(instr.opcode,"addi")==0&&count==4){
+        strncpy(instr.rd,tokens[1],sizeof(instr.rd)-1);
+        strncpy(instr.rs1,tokens[2],sizeof(instr.rs1)-1);
+        instr.imm=atoi(tokens[3]);
+        if(instr.imm<-2048 || instr.imm >2047){
+            instr.errorFlag=1;
+            sprintf(instr.errorMsg,
+                    "Line %d: Immediate out of range for addi",lineNumber);
+        }
+        instr.type=1;
+        instr.funct3=0b000;
+        instr.opcodeVal=0b0010011;
+    }
+    else if(strcmp(instr.opcode,"lw")==0&&count==3){
+        strncpy(instr.rd,tokens[1],sizeof(instr.rd)-1);
+        char *paren=strchr(tokens[2],'(');
+        if(paren==NULL){
+            instr.errorFlag=1;
+            sprintf(instr.errorMsg,
+                    "Line %d: Invalid lw syntax",lineNumber);
+        }
+        else{
+            *paren='\0';
+            instr.imm=atoi(tokens[2]);
+            strncpy(instr.rs1,paren + 1,sizeof(instr.rs1)-1);
+            int len=strlen(instr.rs1);
+            if(len > 0&&instr.rs1[len-1]==')')
+                instr.rs1[len-1]='\0';
+            instr.type=1;
+            instr.funct3=0b010;
+            instr.opcodeVal=0b0000011;
         }
     }
-    return -1;
-   //R TYPE//
-uint32_t encodeRType(const char *rd, const char *rs1, const char *rs2,
-                     int funct3,int funct7,int opcode){
-    int rdCode  =getRegisterCode(rd);
-    int rs1Code =getRegisterCode(rs1);
-    int rs2Code =getRegisterCode(rs2);
-    if (rdCode<0 || rs1Code<0 || rs2Code<0)
-        return 0;
-    uint32_t instruction =0;
-    instruction |=(funct7  &0x7F)<<25;
-    instruction |=(rs2Code &0x1F)<<20;
-    instruction |=(rs1Code &0x1F)<<15;
-    instruction |=(funct3  &0x7)<<12;
-    instruction |=(rdCode  &0x1F)<<7;
-    instruction |=(opcode  &0x7F);
-    return instruction;
-}
-//I TYPE //
-uint32_t encodeIType(const char *rd, const char *rs1,int imm,
-                     int funct3,int opcode){
-    if (imm<-2048 || imm> 2047)
-        return 0;
-    int rdCode  =getRegisterCode(rd);
-    int rs1Code =getRegisterCode(rs1);
-    if (rdCode<0 || rs1Code<0)
-        return 0;
-    uint32_t instruction =0;
-    instruction |=(imm &0xFFF)<<20;
-    instruction |=(rs1Code &0x1F)<<15;
-    instruction |=(funct3 &0x7)<<12;
-    instruction |=(rdCode &0x1F)<<7;
-    instruction |=(opcode &0x7F);
-    return instruction;
-}
-// S TYPE//
-uint32_t encodeSType(const char *rs2, const char *rs1,int imm,
-                     int funct3,int opcode){
+    else if(strcmp(instr.opcode,"sw")==0&&count==3){
+        strncpy(instr.rs2,tokens[1],sizeof(instr.rs2)-1);
+        char *paren=strchr(tokens[2],'(');
+        if(paren==NULL){
+            instr.errorFlag=1;
+            sprintf(instr.errorMsg,
+                    "Line %d: Invalid sw syntax",lineNumber);
+        }
+        else{
+            *paren='\0';
+            instr.imm=atoi(tokens[2]);
+            strncpy(instr.rs1,paren +1,sizeof(instr.rs1)-1);
+            int len=strlen(instr.rs1);
+            if(len >0&&instr.rs1[len-1]==')')
+                instr.rs1[len-1]='\0';
+            instr.type=2;
+            instr.funct3=0b010;
+            instr.opcodeVal=0b0100011;
+        }
+    }
+    else if(strcmp(instr.opcode,"beq")==0&&count==4){
+        strncpy(instr.rs1,tokens[1],sizeof(instr.rs1)-1);
+        strncpy(instr.rs2,tokens[2],sizeof(instr.rs2)-1);
+        instr.imm=atoi(tokens[3]);
+        instr.type=3;
+        instr.funct3=0b000;
+        instr.opcodeVal=0b1100011;
+    }
+    else if(strcmp(instr.opcode,"lui")==0&&count==3){
+        strncpy(instr.rd,tokens[1],sizeof(instr.rd)-1);
+        instr.imm=atoi(tokens[2]);
+        instr.type=4;
+        instr.opcodeVal=0b0110111;
+    }
+    else if(strcmp(instr.opcode,"jal")==0&&count==3){
+        strncpy(instr.rd,tokens[1],sizeof(instr.rd)-1);
+        instr.imm=atoi(tokens[2]);
+        instr.type=5;
+        instr.opcodeVal=0b1101111;
+    }
 
-    if (imm<-2048 || imm>2047)
-        return 0;
-    int rs1Code =getRegisterCode(rs1);
-    int rs2Code=getRegisterCode(rs2);
-    if (rs1Code<0 ||rs2Code<0)
-        return 0;
-    int imm_high =(imm >>5)&0x7F;
-    int imm_low  =imm &0x1F;
-    uint32_t instruction =0;
-    instruction |=(imm_high &0x7F)<<25;
-    instruction |=(rs2Code &0x1F)<<20;
-    instruction |=(rs1Code &0x1F)<<15;
-    instruction|=(funct3 &0x7)<<12;
-    instruction |=(imm_low &0x1F)<<7;
-    instruction |=(opcode &0x7F);
-    return instruction;
-}
-//B TYPE//
-uint32_t encodeBType(const char *rs1,const char *rs2,int imm,
-                     int funct3,int opcode){
-    int rs1Code =getRegisterCode(rs1);
-    int rs2Code =getRegisterCode(rs2);
-    if (rs1Code<0 || rs2Code<0)
-        return 0;
-    int imm12 =(imm >>12)&1;
-    int imm10_5 =(imm >>5)&0x3F;
-    int imm4_1 =(imm >>1)&0xF;
-    int imm11 =(imm >>11)&1;
-    uint32_t instruction =0;
-    instruction |=(imm12<<31);
-    instruction |=(imm10_5<<25);
-    instruction |=(rs2Code<<20);
-    instruction |=(rs1Code<<15);
-    instruction |=(funct3<<12);
-    instruction |=(imm4_1<<8);
-    instruction |=(imm11<<7);
-    instruction|=opcode;
-    return instruction;
-}
-//  U TYPE //
-uint32_t encodeUType(const char *rd,int imm,int opcode){
-    int rdCode =getRegisterCode(rd);
-    if (rdCode<0)
-        return 0;
-    return ((imm &0xFFFFF)<<12)|
-           ((rdCode &0x1F)<<7)|
-           (opcode &0x7F);
-}
-// J TYPE //
-uint32_t encodeJType(const char *rd,int imm,int opcode){
-    int rdCode =getRegisterCode(rd);
-    if (rdCode<0)
-        return 0;
-    int imm20  =(imm >>20)&1;
-    int imm10_1 =(imm >>1)&0x3FF;
-    int imm11 =(imm >>11)&1;
-    int imm19_12 =(imm >>12)&0xFF;
-    uint32_t instruction =0;
-    instruction |=imm20<<31;
-    instruction |=imm10_1<<21;
-    instruction |=imm11<<20;
-    instruction |=imm19_12<<12;
-    instruction |=rdCode<<7;
-    instruction |=opcode;
-    return instruction;
+    else{
+        instr.errorFlag=1;
+        sprintf(instr.errorMsg,
+                "Line %d: Unknown or invalid instruction '%s'",
+                lineNumber,instr.opcode);
+    }
+    return instr;
 }
