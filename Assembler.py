@@ -324,3 +324,36 @@ def assemble(input_file:str,output_file:str,readable_file:str):
         for e in errors:
             print(e)
         sys.exit(1)
+#second pass encode
+    binary_lines =[]
+    readable_lines=[]
+    second_errors =[]
+
+    for idx,(line_num,orig,inst_text) in enumerate(instructions):
+        pc=idx *4
+        try:
+            bits=encode_instruction(inst_text,pc,labels,line_num)
+            binary_lines.append(bits)
+            readable_lines.append(f"0x{pc:08x}:{orig:<50s}  =>  {bits}")
+        except ValueError as exc:
+            second_errors.append(str(exc))
+
+    if second_errors:
+        for e in second_errors:
+            print(e)
+        sys.exit(1)
+
+    with open(output_file,'w') as fh:
+        fh.write('\n'.join(binary_lines))
+
+    with open(readable_file,'w') as fh:
+        fh.write('\n'.join(readable_lines)+'\n')
+
+
+#entry point
+if __name__ == '__main__':
+    if len(sys.argv) not in (3,4):
+        print("Usage:python3 Assembler.py <input_asm> <output_bin> [output_readable]")
+        sys.exit(1)
+    readable=sys.argv[3] if len(sys.argv) == 4 else '/tmp/_asm_readable.txt'
+    assemble(sys.argv[1],sys.argv[2],readable)
