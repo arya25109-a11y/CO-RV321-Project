@@ -212,3 +212,51 @@ def encode_instruction(text:str,pc:int,labels:dict,line_num:int) -> str:
             imm=parse_imm(ops[2],line_num)
         check_range(imm,12,True,line_num)
         return enc_i(rd,rs1,imm,'1100111','000')
+    #Store
+    if op in S_TYPE:
+        m=MEM_PATTERN.match(rest)
+        if not m:
+            raise ValueError(f"Line {line_num}:'{op}' expects 'rs2,imm(rs1)'")
+        rs2=get_register(m.group(1),line_num)
+        imm=parse_imm(m.group(2),line_num)
+        rs1=get_register(m.group(3),line_num)
+        check_range(imm,12,True,line_num)
+        opcode,f3=S_TYPE[op]
+        return enc_s(rs1,rs2,imm,opcode,f3)
+
+    #B type
+    if op in B_TYPE:
+        ops=[x.strip() for x in rest.split(',')]
+        if len(ops)!= 3:
+            raise ValueError(f"Line {line_num}:'{op}' expects rs1,rs2,label/imm")
+        rs1=get_register(ops[0],line_num)
+        rs2=get_register(ops[1],line_num)
+        imm=resolve_labelORimm(ops[2],labels,pc,line_num)
+        check_range(imm,13,True,line_num)
+        if imm % 2!= 0:
+            raise ValueError(f"Line {line_num}:Branch offset must be 2-byte aligned")
+        opcode,f3=B_TYPE[op]
+        return enc_b(rs1,rs2,imm,opcode,f3)
+
+    #U type
+    if op in U_TYPE:
+        ops=[x.strip() for x in rest.split(',')]
+        if len(ops)!= 2:
+            raise ValueError(f"Line {line_num}:'{op}' expects rd,imm[31:12]")
+        rd =get_register(ops[0],line_num)
+        imm=parse_imm(ops[1],line_num)
+        check_range(imm,20,True,line_num)
+        return enc_u(rd,imm,U_TYPE[op])
+
+    #J type
+    if op == 'jal':
+        ops=[x.strip() for x in rest.split(',')]
+        if len(ops)!= 2:
+            raise ValueError(f"Line {line_num}:'jal' expects rd,label/imm")
+        rd =get_register(ops[0],line_num)
+        imm=resolve_labelORimm(ops[1],labels,pc,line_num)
+        check_range(imm,21,True,line_num)
+        if imm%2!= 0:
+            raise ValueError(f"Line {line_num}:Jump offset must be 2-byte aligned")
+        return enc_j(rd,imm,'1101111')
+    raise ValueError(f"Line {line_num}:Unknown instruction '{op}'")
