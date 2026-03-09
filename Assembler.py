@@ -107,3 +107,47 @@ def resolve_labelORimm(token:str,labels:dict,pc:int,line_num:int) -> int:
     if t and t[0].isalpha():
         raise ValueError(f"Line {line_num}:Undefined label '{t}'")
     return parse_imm(t,line_num)
+
+#encodeer
+def enc_r(rd,rs1,rs2,opcode,f3,f7):
+    return f7+to_binary(rs2,5)+to_binary(rs1,5)+f3+to_binary(rd,5)+opcode
+
+def enc_i(rd,rs1,imm,opcode,f3):
+    return to_binary(imm,12)+to_binary(rs1,5)+f3+to_binary(rd,5)+opcode
+
+
+def enc_s(rs1,rs2,imm,opcode,f3):
+    ib=to_binary(imm,12)
+    return ib[0:7]+to_binary(rs2,5)+to_binary(rs1,5)+f3+ib[7:12]+opcode
+
+
+def enc_b(rs1,rs2,imm,opcode,f3):
+    ib=to_binary(imm,13)
+    return ib[0]+ib[2:8]+to_binary(rs2,5)+to_binary(rs1,5)+f3+ib[8:12]+ib[1]+opcode
+
+
+def enc_u(rd,imm,opcode):
+    return to_binary(imm,20)+to_binary(rd,5)+opcode
+
+
+def enc_j(rd,imm,opcode):
+    ib=to_binary(imm,21)
+    return ib[0]+ib[10:20]+ib[9]+ib[1:9]+to_binary(rd,5)+opcode
+
+#first line parsing
+def parse_line(raw:str):
+    line=raw.strip()
+    if not line:
+        return None,None,None
+
+    label=None
+    colon=line.find(':')
+    if colon>0:
+        candidate=line[:colon]
+        if candidate and candidate[0].isalpha() and ' ' not in candidate and '\t' not in candidate:
+            label=candidate
+            line=line[colon+1:].strip()
+
+    if not line:
+        return label,None,None
+    return label,line,None
