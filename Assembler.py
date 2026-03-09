@@ -151,3 +151,64 @@ def parse_line(raw:str):
     if not line:
         return label,None,None
     return label,line,None
+#instruction encoding aka second passing
+MEM_PATTERN=re.compile(r'^([^\s,]+)\s*,\s*(-?(?:0x[\da-fA-F]+|0b[01]+|\d+))\s*\(\s*([^\s)]+)\s*\)$',re.I)
+
+def encode_instruction(text:str,pc:int,labels:dict,line_num:int) -> str:
+    parts=text.split(None,1)
+    if not parts:
+        raise ValueError(f"Line {line_num}:Empty instruction")
+    op=parts[0].lower()
+    rest=parts[1].strip() if len(parts)>1 else ''
+
+    #R type
+    if op in R_TYPE:
+        ops=[x.strip() for x in rest.split(',')]
+        if len(ops) != 3:
+            raise ValueError(f"Line {line_num}:'{op}' expects rd,rs1,rs2")
+        rd =get_register(ops[0],line_num)
+        rs1=get_register(ops[1],line_num)
+        rs2=get_register(ops[2],line_num)
+        opcode,f3,f7=R_TYPE[op]
+        return enc_r(rd,rs1,rs2,opcode,f3,f7)
+
+    #I type ALU (addi,sltiu)
+    if op in I_TYPE_ALU:
+        ops=[x.strip() for x in rest.split(',')]
+        if len(ops) != 3:
+            raise ValueError(f"Line {line_num}:'{op}' expects rd,rs1,imm")
+        rd =get_register(ops[0],line_num)
+        rs1=get_register(ops[1],line_num)
+        imm=parse_imm(ops[2],line_num)
+        check_range(imm,12,True,line_num)
+        opcode,f3=I_TYPE_ALU[op]
+        return enc_i(rd,rs1,imm,opcode,f3)
+
+    #Load lw rd,imm(rs1)
+    if op in I_TYPE_LOAD:
+        m=MEM_PATTERN.match(rest)
+        if not m:
+            raise ValueError(f"Line {line_num}:'{op}' expects 'rd,imm(rs1)'")
+        rd =get_register(m.group(1),line_num)
+        imm=parse_imm(m.group(2),line_num)
+        rs1=get_register(m.group(3),line_num)
+        check_range(imm,12,True,line_num)
+        opcode,f3=I_TYPE_LOAD[op]
+        return enc_i(rd,rs1,imm,opcode,f3)
+
+    #jalr
+    if op == 'jalr':
+        m=MEM_PATTERN.match(rest)
+        if m:
+            rd =get_register(m.group(1),line_num)
+            imm=parse_imm(m.group(2),line_num)
+            rs1=get_register(m.group(3),line_num)
+        else:
+            ops=[x.strip() for x in rest.split(',')]
+            if len(ops) != 3:
+                raise ValueError(f"Line {line_num}:'jalr' expects 'rd,rs1,imm' or 'rd,imm(rs1)'")
+            rd =get_register(ops[0],line_num)
+            rs1=get_register(ops[1],line_num)
+            imm=parse_imm(ops[2],line_num)
+        check_range(imm,12,True,line_num)
+        return enc_i(rd,rs1,imm,'1100111','000')
