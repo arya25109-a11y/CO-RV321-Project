@@ -260,3 +260,67 @@ def encode_instruction(text:str,pc:int,labels:dict,line_num:int) -> str:
             raise ValueError(f"Line {line_num}:Jump offset must be 2-byte aligned")
         return enc_j(rd,imm,'1101111')
     raise ValueError(f"Line {line_num}:Unknown instruction '{op}'")
+
+
+
+#Main
+def assemble(input_file:str,output_file:str,readable_file:str):
+    with open(input_file,'r') as fh:
+        raw_lines=fh.readlines()
+
+    errors=[]
+    instructions=[]
+    labels={}       #label name is instruction index
+
+    inst_idx=0
+    for line_num,raw in enumerate(raw_lines,1):
+        label,inst_text,err=parse_line(raw)
+        if label is not None:
+            if label in labels:
+                errors.append(f"Line {line_num}:Duplicate label '{label}'")
+            else:
+                labels[label]=inst_idx
+
+        if inst_text is not None:
+            instructions.append((line_num,raw.strip(),inst_text))
+            inst_idx += 1
+    if errors:
+        for e in errors:
+            print(e)
+        sys.exit(1)
+
+    if not instructions:
+        print("Error:No instructions found")
+        sys.exit(1)
+
+#Virtual hault checking
+    def is_virtual_halt(idx):
+        _,_,text=instructions[idx]
+        tokens=re.split(r'[\s,]+',text.strip().lower())
+        tokens=[t for t in tokens if t]
+        if len(tokens) < 4 or tokens[0] != 'beq':
+            return False
+        r1,r2,imm_tok=tokens[1],tokens[2],tokens[3]
+        if r1 not in ('zero','x0') or r2 not in ('zero','x0'):
+            return False
+        pc_here=idx *4
+        try:
+            imm_val=resolve_labelORimm(imm_tok,labels,pc_here,0)
+        except Exception:
+            return False
+        return imm_val == 0
+
+    if not any(is_virtual_halt(i) for i in range(len(instructions))):
+        errors.append("Error:Missing Virtual Halt instruction (beq zero,zero,0)")
+#memory flow check
+    MAX_INSTRUCTIONS=64
+    if len(instructions)>MAX_INSTRUCTIONS:
+        errors.append(
+            f"Error:Program too large{len(instructions)} instructions exceed "
+            f"program memory limit of {MAX_INSTRUCTIONS} instructions (256 bytes)"
+        )
+
+    if errors:
+        for e in errors:
+            print(e)
+        sys.exit(1)
